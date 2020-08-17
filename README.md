@@ -1,6 +1,4 @@
-# Sensu Go
-
-### Release 6.0 code reading notes
+# Sensu Go  -  Release 6.0 code reading notes
 
 Sensu 是一款开源的基础设施和分布式应用程序监控解决方案；
 
