@@ -1,21 +1,25 @@
 package main
-import (
-	"io/ioutil"
-	"fmt"
-	"os"
 
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
 	"path/filepath"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
+
 const (
-	flagConfigFile            = "config-file"
-	flagAgentHost             = "agent-host"
-	flagAgentPort             = "agent-port"
-	flagEtcdAdvertiseClientURLs      = "etcd-advertise-client-urls"
+	flagConfigFile                = "config-file"
+	flagAgentHost                 = "agent-host"
+	flagAgentPort                 = "agent-port"
+	flagEtcdAdvertiseClientURLs   = "etcd-advertise-client-urls"
 	defaultEtcdAdvertiseClientURL = "http://localhost:2379"
 )
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "test-cli",
@@ -25,7 +29,7 @@ func main() {
 	rootCmd.AddCommand(CliCommand())
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println("rootCmd.error:",err)
+		fmt.Println("rootCmd.error:", err)
 	}
 
 }
@@ -38,9 +42,9 @@ func CliCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// 将cmd.Flags 绑定到viper 配置上
 			// 下面通过viper 配置读取所有配置参数值;
-			 _ = viper.BindPFlags(cmd.Flags())
+			_ = viper.BindPFlags(cmd.Flags())
 			val, err := cmd.Flags().GetString(flagAgentHost)
-			fmt.Println("val:", val, " err:",err)
+			fmt.Println("val:", val, " err:", err)
 			fmt.Println("viper.host:", viper.GetString(flagAgentHost))
 			return nil
 		},
@@ -61,9 +65,9 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	// 读取命令行参数值对;
 	_ = configFlagSet.Parse(os.Args[1:])
 	// 检查当前是否有可读取的Flags
-	fmt.Println("Aflags:",configFlagSet.HasAvailableFlags())
+	fmt.Println("Aflags:", configFlagSet.HasAvailableFlags())
 	// 当前有的Flags数量
-	fmt.Println("Nflags:",configFlagSet.NFlag())
+	fmt.Println("Nflags:", configFlagSet.NFlag())
 	// 读取所有的Flags
 	configFlagSet.VisitAll(func(flag *pflag.Flag) {
 		fmt.Println(flag.Name, " -- ", flag.Value)
@@ -106,6 +110,20 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	if err := viper.ReadInConfig(); err != nil && configFile != "" {
 		return err
 	}
+	// 设置环境变量前缀
+	viper.SetEnvPrefix("sensu_backend")
+	// 分号替换
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	// 自动搜索环境变量
+	viper.AutomaticEnv()
+	// 上面三句设置 使得 在终端 export SENSU_BACKEND_CLUSTER_ADMIN_USERNAME=YOUR_USERNAME 后,
+	// fmt.Println(viper.GetString("cluster_admin_username"))
+	// fmt.Println(viper.GetString("cluster-admin-username"))
+	// viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	// 将. 换成 _
+	// viper.GetString("cluster.admin.username")
+	// 转换之后是 viper.GetString("cluster_admin_username")
+	// fmt.Println(viper.GetString("cluster.admin.username"))
+
 	return nil
 }
-
