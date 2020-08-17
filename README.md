@@ -1,15 +1,26 @@
 # Sensu Go
 
-CircleCI: [![CircleCI Build Status](https://circleci.com/gh/sensu/sensu-go/tree/master.svg?style=svg)](https://circleci.com/gh/sensu/sensu-go/tree/master)
+## Release 6.0 code reading notes
 
-Sensu is an open source monitoring tool for ephemeral infrastructure
-and distributed applications. It is an agent based monitoring system
-with built-in auto-discovery, making it very well-suited for cloud
-environments. Sensu uses service checks to monitor service health and
-collect telemetry data. It also has a number of well defined APIs for
-configuration, external data input, and to provide access to Sensu's
-data. Sensu is extremely extensible and is commonly referred to as
-"the monitoring router".
+Sensu 是一款开源的基础设施和分布式应用程序监控解决方案；
+
+> Sensu is an open source monitoring tool for ephemeral infrastructure
+and distributed applications.
+
+Sensu 是一款基于Agent的监控系统， 内置自动发现功能， 非常适合云计算环境;
+
+> It is an agent based monitoring **system** with built-in auto-discovery, making it very well-suited for cloud environments.
+
+Sensu 通过服务检测 来监控服务的健康状态和收集遥测数据;
+
+> Sensu uses service checks to monitor service health and collect telemetry data.
+
+Sensu 同时提供了大量友好的OpenAPI, 可以通过API 进行配置， 外部数据传输，及Sensu 数据访问等;
+> It also has a number of well defined APIs for configuration, external data input, and to provide access to Sensu's data.
+
+Sensu 可扩展性非常强， 被称之为"监控路由器";
+
+> Sensu is extremely extensible and is commonly referred to as "the monitoring router".
 
 To learn more about Sensu, [please visit the
 website](https://sensu.io/) and [read the documentation](https://docs.sensu.io/sensu-go/latest/).
@@ -76,22 +87,3 @@ $ go build -ldflags '-X "github.com/sensu/sensu-go/version.Version=5.14.0" -X "g
 $ go build -ldflags '-X "github.com/sensu/sensu-go/version.Version=5.14.0" -X "github.com/sensu/sensu-go/version.BuildDate=2019-10-08" -X "github.com/sensu/sensu-go/version.BuildSHA='`git rev-parse HEAD`'"' -o bin/sensuctl ./cmd/sensuctl
 ```
 
-## Contributing
-
-For guidelines on how to contribute to this project, how to hack on Sensu, and
-information about what we require from project contributors, please see
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-Sensu is and always will be open source, and we continue to highly
-value community contribution. The packages we’re releasing for new
-versions are from our Enterprise repo; Sensu Go is the upstream for
-Sensu Enterprise (as they’d say in the Go community: Sensu Go is
-vendored into the Sensu Enterprise Go repo). We encourage you to
-download new versions, as the functionality will be identical to what
-you find in the public repo, and access to the enterprise-only
-features can be unlocked with a license key. Because these releases
-are in our Enterprise repo, there may be times that you don’t see the
-actual work being done on an issue you open, but that doesn’t mean
-we’re not working on it! Our team is committed to updating progress on
-open issues in the sensu-go repo, even if that work is being done in
-our Enterprise repo.
