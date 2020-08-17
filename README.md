@@ -1,6 +1,6 @@
 # Sensu Go
 
-## Release 6.0 code reading notes
+### Release 6.0 code reading notes
 
 Sensu 是一款开源的基础设施和分布式应用程序监控解决方案；
 
@@ -27,19 +27,27 @@ website](https://sensu.io/) and [read the documentation](https://docs.sensu.io/s
 
 ## What is Sensu Go?
 
-Sensu Go is a complete rewrite of Sensu in Go, with new capabilities
+Sensu Go 是用Golang对Sensu 进行了"重写", 同时提供了新的特性，以及优化了运维操作;
+
+> Sensu Go is a complete rewrite of Sensu in Go, with new capabilities
 and reduced operational overhead. It eliminates several sources of
 friction for new and experienced Sensu users.
 
-The original Sensu required external services like Redis or RabbitMQ.
+Sensu 需要依赖Redis 或RabbitMQ等外部服务才能运行, 重写后的Sensu Go 则只需要依赖内嵌的etcd 作为数据的永久存储即可运行， 相比老版本的Sensu 更易于使用和维护; 同时Sensu Go 也可以配置外部的etcd 作为数据的存储方案;
+
+> The original Sensu required external services like Redis or RabbitMQ.
 Sensu Go can rely on an embedded etcd datastore for persistence, making
 the product easier to get started with. External etcd services can also be
 used, in the event that you already have them deployed.
 
-Sensu Go replaces Ruby expressions with JavaScript filter expressions, by
+Sensu Go 用js替换了老板中的Ruby版本写的过滤器表达式;
+
+> Sensu Go replaces Ruby expressions with JavaScript filter expressions, by
 embedding a JavaScript interpreter.
 
-Unlike the original Sensu, Sensu Go events are always handled, unless
+与老版不同的是， Sensu Go 中的事件一定会被处理， 除非被显示过滤掉;
+
+> Unlike the original Sensu, Sensu Go events are always handled, unless
 explicitly filtered.
 
 ## Installation
