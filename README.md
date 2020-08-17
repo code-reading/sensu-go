@@ -93,3 +93,7 @@ $ go build -ldflags '-X "github.com/sensu/sensu-go/version.Version=5.14.0" -X "g
 $ go build -ldflags '-X "github.com/sensu/sensu-go/version.Version=5.14.0" -X "github.com/sensu/sensu-go/version.BuildDate=2019-10-08" -X "github.com/sensu/sensu-go/version.BuildSHA='`git rev-parse HEAD`'"' -o bin/sensuctl ./cmd/sensuctl
 ```
 
+### Reference
+
+- [浓缩版：云计算运维KVM监控工具之Sensu开源版](https://blog.51cto.com/leoheng/2363065?source=drh)
+- [Sensu:一种云计算平台的监控框架](https://www.ibm.com/developerworks/cn/cloud/library/1607-sensu-monitoring-platform/index.html)
