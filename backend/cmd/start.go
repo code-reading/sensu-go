@@ -155,6 +155,8 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 将cmd.Flags中的Flag 绑定到viper 配置中，
+			// 下面就可以通过viper 获取 命令行中传递过来的Flags参数直对了;
 			_ = viper.BindPFlags(cmd.Flags())
 			if setupErr != nil {
 				return setupErr
@@ -280,18 +282,22 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 		},
 	}
 
+	// 写入默认的配置
 	setupErr = handleConfig(cmd, true)
 
 	return cmd
 }
 
 func handleConfig(cmd *cobra.Command, server bool) error {
+	//----------------设置配置文件路径-------------------------------
 	// Set up distinct flagset for handling config file
 	configFlagSet := pflag.NewFlagSet("sensu", pflag.ContinueOnError)
 	configFileDefaultLocation := filepath.Join(path.SystemConfigDir(), "backend.yml")
 	configFileDefault := fmt.Sprintf("path to sensu-backend config file (default %q)", configFileDefaultLocation)
+	// 添加一个Flag: flagConfigFile 值为空;
 	configFlagSet.StringP(flagConfigFile, "c", "", configFileDefault)
 	configFlagSet.SetOutput(ioutil.Discard)
+	//parses flag definitions from the argument list, which should not include the command name.
 	_ = configFlagSet.Parse(os.Args[1:])
 
 	// Get the given config file path
@@ -299,6 +305,7 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	configFilePath := configFile
 
 	// use the default config path if flagConfigFile was used
+	// 如果配置文件路径为空， 使用默认配置文件路径
 	if configFile == "" {
 		configFilePath = configFileDefaultLocation
 	}
@@ -306,7 +313,10 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	// Configure location of backend configuration
 	viper.SetConfigType("yaml")
 	viper.SetConfigFile(configFilePath)
+	//----------------设置配置文件路径-------------------------------
 
+	//-设置默认配置项------------------------------------------------
+	//sensu-backend server端默认配置
 	if server {
 		// Flag defaults
 		viper.SetDefault(flagAgentHost, "[::]")
@@ -352,13 +362,20 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	viper.SetDefault(flagEtcdHeartbeatInterval, etcd.DefaultTickMs)
 	viper.SetDefault(flagEtcdElectionTimeout, etcd.DefaultElectionMs)
 
+	//sensu-backend 默认使用内嵌的etcd
 	if server {
 		viper.SetDefault(flagNoEmbedEtcd, false)
 	}
 
+	//-设置默认配置项------------------------------------------------
+
 	// Merge in config flag set so that it appears in command usage
+	// 将configFlagSet项加到cmd.Flags中;
+	// 但此时configFlagSet里面只有一个空的 config-file Flag  没啥用
+	// 将配置文件中的Flag 合并到 cmd.Flags中
 	cmd.Flags().AddFlagSet(configFlagSet)
 
+	//-设置默认的命令参数值-------------------------------------------
 	if server {
 		// Main Flags
 		cmd.Flags().String(flagAgentHost, viper.GetString(flagAgentHost), "agent listener host")
@@ -431,6 +448,7 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 		_ = cmd.Flags().SetAnnotation(flagEtcdNodeName, "categories", []string{"store"})
 	}
 
+	//-标记废弃的flags-------------------------------------------
 	// Deprecated flags
 	if server && DeprecateDashboardFlags {
 		msg := "as of Sensu v6.0 the dashboard is no longer distributed as part of the sensu-backend binary"
@@ -442,6 +460,7 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 
 	// Etcd client/server flags
 	cmd.Flags().StringSlice(flagEtcdCipherSuites, nil, "list of ciphers to use for etcd TLS configuration")
+	// 设置注释, 没啥用途;
 	_ = cmd.Flags().SetAnnotation(flagEtcdCipherSuites, "categories", []string{"store"})
 
 	// This one is really only a server flag, but because we lacked
@@ -465,13 +484,20 @@ func handleConfig(cmd *cobra.Command, server bool) error {
 	_ = cmd.Flags().SetAnnotation(flagEtcdClientURLs, "categories", []string{"store"})
 
 	// Load the configuration file but only error out if flagConfigFile is used
+	// 读取配置文件中的配置项;
+	// 如果与上面设置的默认配置项key 重复，则覆盖默认配置项;
 	if err := viper.ReadInConfig(); err != nil && configFile != "" {
 		return err
 	}
 
+	// 设置环境变量前缀
 	viper.SetEnvPrefix("sensu_backend")
+	// 分号替换
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	// 自动搜索环境变量
 	viper.AutomaticEnv()
+	// 上面三句设置 使得 在终端 export SENSU_BACKEND_CLUSTER_ADMIN_USERNAME=YOUR_USERNAME 后,
+	// 	fmt.Println(viper.GetString("cluster_admin_username"))
 
 	// Use our custom template for the start command
 	cobra.AddTemplateFunc("categoryFlags", categoryFlags)
