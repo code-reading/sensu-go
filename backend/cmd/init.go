@@ -67,16 +67,16 @@ func InitCommand() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 将cmd.Flags 绑定到viper配置项上;
 			_ = viper.BindPFlags(cmd.Flags())
 			if setupErr != nil {
 				return setupErr
 			}
-
 			cfg := &backend.Config{
 				EtcdClientURLs:      fallbackStringSlice(flagEtcdClientURLs, flagEtcdAdvertiseClientURLs),
 				EtcdCipherSuites:    viper.GetStringSlice(flagEtcdCipherSuites),
 				EtcdMaxRequestBytes: viper.GetUint(flagEtcdMaxRequestBytes),
-				NoEmbedEtcd:         true,
+				NoEmbedEtcd:         true, //默认使用外部etcd;
 			}
 
 			// Sensu APIs TLS config
@@ -119,7 +119,6 @@ func InitCommand() *cobra.Command {
 			}
 
 			timeout := viper.GetDuration(flagTimeout)
-
 			client, err := clientv3.New(clientv3.Config{
 				Endpoints:   clientURLs,
 				DialTimeout: timeout * time.Second,
@@ -183,7 +182,7 @@ func InitCommand() *cobra.Command {
 	cmd.Flags().String(flagInitAdminPassword, "", "cluster admin password")
 	cmd.Flags().Bool(flagInteractive, false, "interactive mode")
 	cmd.Flags().String(flagTimeout, defaultTimeout, "timeout, in seconds, for failing to establish a connection to etcd")
-
+	// 写入默认的配置
 	setupErr = handleConfig(cmd, false)
 
 	return cmd
