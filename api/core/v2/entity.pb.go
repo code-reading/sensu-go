@@ -27,6 +27,7 @@ const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
 // Entity is the Entity supplying the event. The default Entity for any
 // Event is the running Agent process--if the Event is sent by an Agent.
+// 提供event的实体
 type Entity struct {
 	EntityClass    string         `protobuf:"bytes,1,opt,name=entity_class,json=entityClass,proto3" json:"entity_class"`
 	System         System         `protobuf:"bytes,3,opt,name=system,proto3" json:"system"`
