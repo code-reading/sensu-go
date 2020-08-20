@@ -60,21 +60,22 @@ func (e ErrStartup) Error() string {
 
 // Backend represents the backend server, which is used to hold the datastore
 // and coordinating the daemons
+// backend 服务 运行内嵌的etcd存储服务 并且协调daemons之间的操作;
 type Backend struct {
-	Client                 *clientv3.Client
-	Daemons                []daemon.Daemon
-	Etcd                   *etcd.Etcd
-	Store                  store.Store
-	EventStore             EventStoreUpdater
-	GraphQLService         *graphql.Service
-	SecretsProviderManager *secrets.ProviderManager
-	HealthRouter           *routers.HealthRouter
-	EtcdClientTLSConfig    *tls.Config
+	Client                 *clientv3.Client         // etcd client
+	Daemons                []daemon.Daemon          // daemon 列表，Daemon 是一个接口类型， 用于管理一组goroutine
+	Etcd                   *etcd.Etcd               // etcd 对象
+	Store                  store.Store              // 存储对象
+	EventStore             EventStoreUpdater        // 事件更新落盘
+	GraphQLService         *graphql.Service         // graphql 服务
+	SecretsProviderManager *secrets.ProviderManager // 密码提供管理者
+	HealthRouter           *routers.HealthRouter    // 监控路由
+	EtcdClientTLSConfig    *tls.Config              // etcd tls
 
-	ctx       context.Context
-	runCtx    context.Context
-	runCancel context.CancelFunc
-	cfg       *Config
+	ctx       context.Context    // cancel context 监听外部中断信号
+	runCtx    context.Context    // 运行时ctx
+	runCancel context.CancelFunc // 运行时cancel ctx
+	cfg       *Config            // 配置
 }
 
 // EventStoreUpdater offers a way to update an event store to a different
@@ -84,6 +85,7 @@ type EventStoreUpdater interface {
 }
 
 func newClient(ctx context.Context, config *Config, backend *Backend) (*clientv3.Client, error) {
+	// NoEmbedEtcd=true, 表示使用外部etcd服务;
 	if config.NoEmbedEtcd {
 		logger.Info("dialing etcd server")
 		tlsInfo := (transport.TLSInfo)(config.EtcdClientTLSInfo)
@@ -99,6 +101,7 @@ func newClient(ctx context.Context, config *Config, backend *Backend) (*clientv3
 
 		// Don't start up an embedded etcd, return a client that connects to an
 		// external etcd instead.
+		// 实例化一个连接外部etcd服务的etcd client实例
 		client, err := clientv3.New(clientv3.Config{
 			Endpoints:   clientURLs,
 			DialTimeout: 5 * time.Second,
@@ -113,6 +116,7 @@ func newClient(ctx context.Context, config *Config, backend *Backend) (*clientv3
 		if _, err := client.Get(ctx, "/sensu.io"); err != nil {
 			return nil, err
 		}
+		// 返回外部的etcd.client 实例
 		return client, nil
 	}
 
@@ -157,20 +161,23 @@ func newClient(ctx context.Context, config *Config, backend *Backend) (*clientv3
 	if err != nil {
 		return nil, fmt.Errorf("error starting etcd: %s", err)
 	}
-
+	// etcd 服务器实例
 	backend.Etcd = e
 
 	// Create an etcd client
 	var client *clientv3.Client
 	if config.EtcdUseEmbeddedClient {
+		// 当设置了EtcdUseEmbeddedClient 会生成一个测试用的etcd client
 		client = e.NewEmbeddedClient()
 	} else {
+		// 正常流程走这里;
 		cl, err := e.NewClientContext(backend.runCtx)
 		if err != nil {
 			return nil, err
 		}
 		client = cl
 	}
+	// 测试新建的etcd.client 是否可以用, etcd服务正常时, 返回的err为nil
 	if _, err := client.Get(ctx, "/sensu.io"); err != nil {
 		return nil, err
 	}
@@ -181,6 +188,8 @@ func newClient(ctx context.Context, config *Config, backend *Backend) (*clientv3
 // configuring etcd and establishing a list of daemons, which constitute our
 // backend. The daemons will later be started according to their position in the
 // b.Daemons list, and stopped in reverse order
+
+// 初始化一个backend 实例;
 func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	var err error
 	// Initialize a Backend struct
@@ -189,15 +198,19 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	b.ctx = ctx
 	b.runCtx, b.runCancel = context.WithCancel(b.ctx)
 
+	// 初始化一个etcd client
 	b.Client, err = newClient(b.RunContext(), config, b)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the store, which lives on top of etcd
+	// 默认创建一个 /sensu.io/keepalives/default 的 etcd 命名空间
+	// 所有的数据都存储在这个空间下;
 	stor := etcdstore.NewStore(b.Client, config.EtcdName)
 	b.Store = stor
 
+	// 存储一个 sensu cluster id
 	if _, err := stor.GetClusterID(b.RunContext()); err != nil {
 		return nil, err
 	}
@@ -208,16 +221,21 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 		return nil, err
 	}
 
+	// 初始化一个事件存储代理， 防止在未被引用时被GC掉;
 	eventStoreProxy := store.NewEventStoreProxy(stor)
 	b.EventStore = eventStoreProxy
 
 	logger.Debug("Registering backend...")
 
+	// 生成一个backend lease标识, 同时保存在etcd中;
+	// 返回一个带etcd.client的backendGetter 即backendID
 	backendID := etcd.NewBackendIDGetter(b.RunContext(), b.Client)
 	logger.Debug("Done registering backend.")
+	// 添加到b.Daemons 队列中, 这个daemon 其实是一组goroutine的管理者;
 	b.Daemons = append(b.Daemons, backendID)
 
 	// Initialize an etcd getter
+	// 初始化一个带etcd.client 和backend 的 queue 实例
 	queueGetter := queue.EtcdGetter{Client: b.Client, BackendIDGetter: backendID}
 
 	// Initialize the bus
@@ -225,11 +243,14 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error initializing %s: %s", bus.Name(), err)
 	}
+	// daemon 是一组goroutine的管理接口
 	b.Daemons = append(b.Daemons, bus)
 
 	// Initialize asset manager
+	// 初始化event管理者 backend
 	backendEntity := b.getBackendEntity(config)
 	logger.WithField("entity", backendEntity).Info("backend entity information")
+	// assetManager
 	assetManager := asset.NewManager(config.CacheDir, backendEntity, &sync.WaitGroup{})
 	limit := b.cfg.AssetsRateLimit
 	if limit == 0 {
@@ -244,14 +265,15 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	b.SecretsProviderManager = secrets.NewProviderManager()
 
 	// Initialize pipelined
+	// pipeline 负责将events 送到对应的handler处理
 	pipeline, err := pipelined.New(pipelined.Config{
-		Store:                   stor,
-		Bus:                     bus,
-		ExtensionExecutorGetter: rpc.NewGRPCExtensionExecutor,
-		AssetGetter:             assetGetter,
+		Store:                   stor,                         // etcd.store 客户端
+		Bus:                     bus,                          //bus
+		ExtensionExecutorGetter: rpc.NewGRPCExtensionExecutor, //grpc executor
+		AssetGetter:             assetGetter,                  // asset getter
 		BufferSize:              viper.GetInt(FlagPipelinedBufferSize),
 		WorkerCount:             viper.GetInt(FlagPipelinedWorkers),
-		StoreTimeout:            2 * time.Minute,
+		StoreTimeout:            2 * time.Minute, // 存储超时2分钟
 		SecretsProviderManager:  b.SecretsProviderManager,
 		BackendEntity:           backendEntity,
 	})
@@ -261,17 +283,18 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	b.Daemons = append(b.Daemons, pipeline)
 
 	// Initialize eventd
+	// eventd 负责将events 存储到etcd中
 	event, err := eventd.New(
 		b.RunContext(),
 		eventd.Config{
-			Store:           stor,
-			EventStore:      eventStoreProxy,
+			Store:           stor,            //etcd.store client
+			EventStore:      eventStoreProxy, //etcd.client proxy
 			Bus:             bus,
-			LivenessFactory: liveness.EtcdFactory(b.RunContext(), b.Client),
+			LivenessFactory: liveness.EtcdFactory(b.RunContext(), b.Client), // etcd.client, 第一次使用后被缓存起来
 			Client:          b.Client,
 			BufferSize:      viper.GetInt(FlagEventdBufferSize),
 			WorkerCount:     viper.GetInt(FlagEventdWorkers),
-			StoreTimeout:    2 * time.Minute,
+			StoreTimeout:    2 * time.Minute, //存储超时2分钟
 		},
 	)
 	if err != nil {
@@ -279,9 +302,11 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	}
 	b.Daemons = append(b.Daemons, event)
 
+	// etcd 连接池, ring queue
 	ringPool := ringv2.NewPool(b.Client)
 
 	// Initialize schedulerd
+	// 定期检查配置的请求, 并将其发布到消息总线;
 	scheduler, err := schedulerd.New(
 		b.RunContext(),
 		schedulerd.Config{
@@ -304,6 +329,8 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	}
 
 	// Initialize agentd
+	// 后端HTTP API 模块
+	// 负责backend 与agent 之间的请求逻辑
 	agent, err := agentd.New(agentd.Config{
 		Host:         config.AgentHost,
 		Port:         config.AgentPort,
@@ -319,6 +346,7 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	b.Daemons = append(b.Daemons, agent)
 
 	// Initialize keepalived
+	// 监听entity 的keepalive 事件并记录;
 	keepalive, err := keepalived.New(keepalived.Config{
 		DeregistrationHandler: config.DeregistrationHandler,
 		Bus:                   bus,
@@ -363,27 +391,29 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 	}
 
 	// Initialize the health router
+	// etcd 健康情况
 	b.HealthRouter = routers.NewHealthRouter(actions.NewHealthController(stor, b.Client.Cluster, b.EtcdClientTLSConfig))
 
 	// Initialize GraphQL service
 	auth := &rbac.Authorizer{Store: stor}
+	// graphql service
 	b.GraphQLService, err = graphql.NewService(graphql.ServiceConfig{
-		AssetClient:       api.NewAssetClient(stor, auth),
-		CheckClient:       api.NewCheckClient(stor, actions.NewCheckController(stor, queueGetter), auth),
-		EntityClient:      api.NewEntityClient(stor, eventStoreProxy, auth),
-		EventClient:       api.NewEventClient(eventStoreProxy, auth, bus),
-		EventFilterClient: api.NewEventFilterClient(stor, auth),
-		HandlerClient:     api.NewHandlerClient(stor, auth),
-		HealthController:  actions.NewHealthController(stor, b.Client.Cluster, etcdClientTLSConfig),
-		MutatorClient:     api.NewMutatorClient(stor, auth),
-		SilencedClient:    api.NewSilencedClient(stor, auth),
-		NamespaceClient:   api.NewNamespaceClient(stor, auth),
-		HookClient:        api.NewHookConfigClient(stor, auth),
-		UserClient:        api.NewUserClient(stor, auth),
-		RBACClient:        api.NewRBACClient(stor, auth),
-		VersionController: actions.NewVersionController(clusterVersion),
-		MetricGatherer:    prometheus.DefaultGatherer,
-		GenericClient:     &api.GenericClient{Store: stor, Auth: auth},
+		AssetClient:       api.NewAssetClient(stor, auth),                                                // web-ui静态资源加载;
+		CheckClient:       api.NewCheckClient(stor, actions.NewCheckController(stor, queueGetter), auth), // CheckClient is an API client for check configuration api 进行curd 是否授权检查的API 客服端
+		EntityClient:      api.NewEntityClient(stor, eventStoreProxy, auth),                              // entity curd API client
+		EventClient:       api.NewEventClient(eventStoreProxy, auth, bus),                                // event curd api client
+		EventFilterClient: api.NewEventFilterClient(stor, auth),                                          // event curd filter api client
+		HandlerClient:     api.NewHandlerClient(stor, auth),                                              // handlers curd api client
+		HealthController:  actions.NewHealthController(stor, b.Client.Cluster, etcdClientTLSConfig),      // 查看etcd 的健康情况
+		MutatorClient:     api.NewMutatorClient(stor, auth),                                              //mutator curd api client
+		SilencedClient:    api.NewSilencedClient(stor, auth),                                             // silence check 的curd api client
+		NamespaceClient:   api.NewNamespaceClient(stor, auth),                                            // namespace curd api client
+		HookClient:        api.NewHookConfigClient(stor, auth),                                           // check hooks 的curd api client
+		UserClient:        api.NewUserClient(stor, auth),                                                 // user curd api client
+		RBACClient:        api.NewRBACClient(stor, auth),                                                 // rbac curd api client (比较复杂, 分role 绑定 和 cluster role 绑定)
+		VersionController: actions.NewVersionController(clusterVersion),                                  //获取版本信息
+		MetricGatherer:    prometheus.DefaultGatherer,                                                    // prometheus metrics
+		GenericClient:     &api.GenericClient{Store: stor, Auth: auth},                                   // 通用api client  本身有auth, 有资源的curd api 操作
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error initializing graphql.Service: %s", err)
@@ -405,6 +435,7 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 		GraphQLService:      b.GraphQLService,
 		HealthRouter:        b.HealthRouter,
 	}
+	//backend http api 服务
 	api, err := apid.New(apidConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing %s: %s", api.Name(), err)
@@ -442,6 +473,7 @@ func Initialize(ctx context.Context, config *Config) (*Backend, error) {
 			KeyFile:  config.TLS.GetKeyFile(),
 		}
 	}
+	// 启动一个dashboard 服务
 	dashboard, err := dashboardd.New(dashboardd.Config{
 		APIDConfig: apidConfig,
 		Host:       config.DashboardHost,
@@ -560,6 +592,7 @@ func (b *Backend) RunWithInitializer(initialize func(context.Context, *Config) (
 	signal.Notify(sighup, syscall.SIGHUP)
 
 	err := backoff.Retry(func(int) (bool, error) {
+		// run
 		err := b.runOnce(sighup)
 		b.Stop()
 		if err != nil {
@@ -575,6 +608,7 @@ func (b *Backend) RunWithInitializer(initialize func(context.Context, *Config) (
 
 		_ = b.Client.Close()
 
+		// 重新初始化一个backend 实例， 避免上次stop后 带入的副作用;
 		// Yes, two levels of retry... this could improve. Unfortunately Intialize()
 		// is called elsewhere.
 		err = backoff.Retry(func(int) (bool, error) {
@@ -674,7 +708,7 @@ func (b *Backend) getBackendEntity(config *Config) *corev2.Entity {
 		EntityClass: corev2.EntityBackendClass,
 		System:      getSystemInfo(),
 		ObjectMeta: corev2.ObjectMeta{
-			Name:        getDefaultBackendID(),
+			Name:        getDefaultBackendID(), //hostname
 			Labels:      b.cfg.Labels,
 			Annotations: b.cfg.Annotations,
 		},
