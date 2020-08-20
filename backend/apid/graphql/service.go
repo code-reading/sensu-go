@@ -42,6 +42,7 @@ type ServiceConfig struct {
 }
 
 // Service describes the Sensu GraphQL service capable of handling queries.
+// 描述 处理查询的graphql 服务
 type Service struct {
 	Target       *graphql.Service
 	Config       ServiceConfig
