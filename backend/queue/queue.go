@@ -49,6 +49,9 @@ func (e EtcdGetter) GetQueue(path ...string) types.Queue {
 // the work lane, and added to the in-flight lane. The item stays in the
 // in-flight lane until it is Acked by the client, or returned to the work
 // lane with Nack.
+// 由etcd支持的非持久的先进先出的queue
+// 当client接收到一个item后，这个item 会从工作队列中删除， 暂时存到in-flight 目录中
+// client接收成功并Acked后，则从in-flight目录中删除，否则继续退回到work 目录中
 type Queue struct {
 	kv              clientv3.KV
 	lease           clientv3.Lease
@@ -58,14 +61,17 @@ type Queue struct {
 	backendIDGetter BackendIDGetter
 }
 
+// 获取backendID
 func (q *Queue) backendID() int64 {
 	return q.backendIDGetter.GetBackendID()
 }
 
+// 拼一个 work lane key
 func (q *Queue) workPrefix() string {
 	return path.Join(q.name, fmt.Sprintf("%x", q.backendID()), workPostfix)
 }
 
+// 拼一个 in flight lane key
 func (q *Queue) inFlightPrefix() string {
 	return path.Join(q.name, fmt.Sprintf("%x", q.backendID()), inFlightPostfix)
 }
@@ -102,6 +108,7 @@ func (i *Item) Value() string {
 
 // Ack acknowledges the Item has been received and processed, and deletes it
 // from the in flight lane.
+// item 被成功处理后，就从in flight 目录下删除掉;
 func (i *Item) Ack(ctx context.Context) error {
 	return etcd.Backoff(ctx).Retry(func(n int) (done bool, err error) {
 		_, err = i.queue.kv.Delete(ctx, i.key)
@@ -112,10 +119,12 @@ func (i *Item) Ack(ctx context.Context) error {
 // Nack returns the Item to the work queue and deletes it from the in-flight
 // lane.
 func (i *Item) Nack(ctx context.Context) error {
+	// workPrefix  key
 	return i.queue.swapLane(ctx, i.key, i.value, i.queue.workPrefix())
 }
 
 // swapLane swaps a key/value pair from one lane to another
+// 交互lane
 func (q *Queue) swapLane(ctx context.Context, currentKey, value string, lane string) error {
 	for {
 		seq, err := q.timeStamp()
@@ -125,11 +134,12 @@ func (q *Queue) swapLane(ctx context.Context, currentKey, value string, lane str
 		uKey := path.Join(lane, seq)
 
 		putCmp := clientv3.Compare(clientv3.ModRevision(uKey), "=", 0)
-		leaseID := clientv3.LeaseID(q.backendID())
-		putReq := clientv3.OpPut(uKey, value, clientv3.WithLease(leaseID))
-		delReq := clientv3.OpDelete(currentKey)
+		leaseID := clientv3.LeaseID(q.backendID())                         // 获取backendID 并且强行转换为 clientv3.LeaseID
+		putReq := clientv3.OpPut(uKey, value, clientv3.WithLease(leaseID)) // 用uKey 续租
+		delReq := clientv3.OpDelete(currentKey)                            // 删除当前的key
 
 		var response *clientv3.TxnResponse
+		// etcd 重试 实务
 		err = etcd.Backoff(ctx).Retry(func(n int) (done bool, err error) {
 			response, err = q.kv.Txn(ctx).If(putCmp).Then(putReq, delReq).Commit()
 			return etcd.RetryRequest(n, err)
@@ -258,6 +268,7 @@ func (q *Queue) tryDelete(ctx context.Context, kv *mvccpb.KeyValue) (types.Queue
 	if err != nil {
 		return nil, fmt.Errorf("error deleting queue item: %s", err)
 	}
+	// inflight lane key
 	uKey := path.Join(q.inFlightPrefix(), seq)
 
 	delCmp := clientv3.Compare(clientv3.Version(key), ">", 0)

@@ -68,6 +68,7 @@ func NewBackendIDGetter(ctx context.Context, client BackendIDGetterClient) *Back
 	return getter
 }
 
+// backend id 在etcd中续租
 func (b *BackendIDGetter) keepAliveLease(ctx context.Context) {
 	id, ch, err := b.getLease()
 	if err != nil {
@@ -79,6 +80,7 @@ func (b *BackendIDGetter) keepAliveLease(ctx context.Context) {
 	}
 	atomic.StoreInt64(&b.id, id)
 	b.wg.Done()
+	// 接收定期续租的租约返回, 如果失败了就报错
 	for {
 		select {
 		case resp, ok := <-ch:
@@ -97,8 +99,20 @@ func (b *BackendIDGetter) keepAliveLease(ctx context.Context) {
 	}
 }
 
+/*
+Lease提供了几个功能：
+
+Grant：分配一个租约。
+Revoke：释放一个租约。
+TimeToLive：获取剩余TTL时间。
+Leases：列举所有etcd中的租约。
+KeepAlive：自动定时的续约某个租约。
+KeepAliveOnce：为某个租约续约一次。
+Close：貌似是关闭当前客户端建立的所有租约。
+*/
 func (b *BackendIDGetter) getLease() (int64, <-chan *clientv3.LeaseKeepAliveResponse, error) {
 	// Grant a lease for 60 seconds
+	// 新建一个60s 的租约
 	resp, err := b.client.Grant(b.ctx, backendIDLeasePeriod)
 	if err != nil {
 		return 0, nil, fmt.Errorf("error creating backend ID: error granting lease: %s", err)
@@ -115,8 +129,9 @@ func (b *BackendIDGetter) getLease() (int64, <-chan *clientv3.LeaseKeepAliveResp
 	}
 
 	// Keep the lease alive
+	// 定期自动续租约
 	ch, err := b.client.KeepAlive(b.ctx, leaseID)
-
+	// 将leaseID 租约ID 作为backend标识;
 	return int64(leaseID), ch, err
 }
 

@@ -151,11 +151,12 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			//绑定参数到配置上
 			_ = viper.BindPFlags(cmd.Flags())
 			if setupErr != nil {
 				return setupErr
 			}
-
+			// 默认level = warn
 			level, err := logrus.ParseLevel(viper.GetString(flagLogLevel))
 			if err != nil {
 				return err
@@ -165,50 +166,88 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 			// If no clustering options are provided, default to a static
 			// cluster 'defaultEtcdName=defaultEtcdPeerURL'.
 			initialCluster := viper.GetString(flagEtcdInitialCluster)
+			// 集群发现服务地址
 			etcdDiscovery := viper.GetString(flagEtcdDiscovery)
+			//DNS发现服务地址
 			SrvDiscovery := viper.GetString(flagEtcdDiscoverySrv)
 
 			if initialCluster == "" && etcdDiscovery == "" && SrvDiscovery == "" {
 				initialCluster = fmt.Sprintf("%s=%s", defaultEtcdName, defaultEtcdPeerURL)
 			}
 
+			// 准备backend 配置
 			cfg := &backend.Config{
-				AgentHost:             viper.GetString(flagAgentHost),
-				AgentPort:             viper.GetInt(flagAgentPort),
-				AgentWriteTimeout:     viper.GetInt(backend.FlagAgentWriteTimeout),
-				APIListenAddress:      viper.GetString(flagAPIListenAddress),
-				APIURL:                viper.GetString(flagAPIURL),
-				AssetsRateLimit:       rate.Limit(viper.GetFloat64(flagAssetsRateLimit)),
-				AssetsBurstLimit:      viper.GetInt(flagAssetsBurstLimit),
-				DashboardHost:         viper.GetString(flagDashboardHost),
-				DashboardPort:         viper.GetInt(flagDashboardPort),
-				DashboardTLSCertFile:  viper.GetString(flagDashboardCertFile),
-				DashboardTLSKeyFile:   viper.GetString(flagDashboardKeyFile),
+				//websocketAPI agent 链接backend 的ws 配置;
+				//AgentHost 默认值: [::]
+				AgentHost: viper.GetString(flagAgentHost),
+				//AgentPort 默认值: 8081
+				AgentPort: viper.GetInt(flagAgentPort),
+				//AgentWriteTimeout 默认值: 15s
+				AgentWriteTimeout: viper.GetInt(backend.FlagAgentWriteTimeout),
+				// sensuctl 调用的API配置
+				//APIListenAddress 默认值: [::]:8080
+				APIListenAddress: viper.GetString(flagAPIListenAddress),
+				//APIURL 默认值: http://localhost:8080
+				APIURL: viper.GetString(flagAPIURL),
+				//AssetsRateLimit 默认值: 0
+				AssetsRateLimit: rate.Limit(viper.GetFloat64(flagAssetsRateLimit)),
+				//AssetsBurstLimit 默认值: 100
+				AssetsBurstLimit: viper.GetInt(flagAssetsBurstLimit),
+				// webUI 配置
+				//DashboardHost 默认值: [::]
+				DashboardHost: viper.GetString(flagDashboardHost),
+				//DashboardPort 默认值: 3000
+				DashboardPort: viper.GetInt(flagDashboardPort),
+				//DashboardTLSCertFile 默认值:
+				DashboardTLSCertFile: viper.GetString(flagDashboardCertFile),
+				//DashboardTLSKeyFile 默认值:
+				DashboardTLSKeyFile: viper.GetString(flagDashboardKeyFile),
+				//DeregistrationHandler 默认值:
 				DeregistrationHandler: viper.GetString(flagDeregistrationHandler),
-				CacheDir:              viper.GetString(flagCacheDir),
-				StateDir:              viper.GetString(flagStateDir),
-
-				EtcdAdvertiseClientURLs:      viper.GetStringSlice(flagEtcdAdvertiseClientURLs),
-				EtcdListenClientURLs:         viper.GetStringSlice(flagEtcdListenClientURLs),
-				EtcdClientURLs:               fallbackStringSlice(flagEtcdClientURLs, flagEtcdAdvertiseClientURLs),
-				EtcdListenPeerURLs:           viper.GetStringSlice(flagEtcdPeerURLs),
-				EtcdInitialCluster:           initialCluster,
-				EtcdInitialClusterState:      viper.GetString(flagEtcdInitialClusterState),
-				EtcdDiscovery:                etcdDiscovery,
-				EtcdDiscoverySrv:             SrvDiscovery,
+				//CacheDir 默认值: /var/cache/sensu/sensu-backend
+				CacheDir: viper.GetString(flagCacheDir),
+				//StateDir 默认值: /var/lib/sensu/sensu-backend
+				StateDir: viper.GetString(flagStateDir),
+				//EtcdAdvertiseClientURLs 默认值: [http://localhost:2379]
+				EtcdAdvertiseClientURLs: viper.GetStringSlice(flagEtcdAdvertiseClientURLs),
+				//EtcdListenClientURLs 默认值: [http://127.0.0.1:2379]
+				EtcdListenClientURLs: viper.GetStringSlice(flagEtcdListenClientURLs),
+				//EtcdClientURLs 默认值: [http://localhost:2379]
+				EtcdClientURLs: fallbackStringSlice(flagEtcdClientURLs, flagEtcdAdvertiseClientURLs),
+				//EtcdListenPeerURLs 默认值: [http://127.0.0.1:2380]
+				EtcdListenPeerURLs: viper.GetStringSlice(flagEtcdPeerURLs),
+				//EtcdInitialCluster 默认值: default=http://127.0.0.1:2380
+				EtcdInitialCluster: initialCluster,
+				//EtcdInitialClusterState 默认值: new
+				EtcdInitialClusterState: viper.GetString(flagEtcdInitialClusterState),
+				//EtcdDiscovery 默认值:
+				EtcdDiscovery: etcdDiscovery,
+				//EtcdDiscoverySrv 默认值:
+				EtcdDiscoverySrv: SrvDiscovery,
+				//EtcdInitialAdvertisePeerURLs 默认值: [http://127.0.0.1:2380]
 				EtcdInitialAdvertisePeerURLs: viper.GetStringSlice(flagEtcdInitialAdvertisePeerURLs),
-				EtcdInitialClusterToken:      viper.GetString(flagEtcdInitialClusterToken),
-				EtcdName:                     viper.GetString(flagEtcdNodeName),
-				EtcdCipherSuites:             viper.GetStringSlice(flagEtcdCipherSuites),
-				EtcdQuotaBackendBytes:        viper.GetInt64(flagEtcdQuotaBackendBytes),
-				EtcdMaxRequestBytes:          viper.GetUint(flagEtcdMaxRequestBytes),
-				EtcdHeartbeatInterval:        viper.GetUint(flagEtcdHeartbeatInterval),
-				EtcdElectionTimeout:          viper.GetUint(flagEtcdElectionTimeout),
-				NoEmbedEtcd:                  viper.GetBool(flagNoEmbedEtcd),
-				Labels:                       viper.GetStringMapString(flagLabels),
-				Annotations:                  viper.GetStringMapString(flagAnnotations),
+				//EtcdInitialClusterToken 默认值:
+				EtcdInitialClusterToken: viper.GetString(flagEtcdInitialClusterToken),
+				//EtcdName 默认值: default
+				EtcdName: viper.GetString(flagEtcdNodeName),
+				//EtcdCipherSuites 默认值: []
+				EtcdCipherSuites: viper.GetStringSlice(flagEtcdCipherSuites),
+				//EtcdQuotaBackendBytes 默认值: 4294967296
+				EtcdQuotaBackendBytes: viper.GetInt64(flagEtcdQuotaBackendBytes),
+				//EtcdMaxRequestBytes 默认值: 1572864
+				EtcdMaxRequestBytes: viper.GetUint(flagEtcdMaxRequestBytes),
+				//EtcdHeartbeatInterval 默认值: 100
+				EtcdHeartbeatInterval: viper.GetUint(flagEtcdHeartbeatInterval),
+				//EtcdElectionTimeout 默认值: 1000
+				EtcdElectionTimeout: viper.GetUint(flagEtcdElectionTimeout),
+				//NoEmbedEtcd 默认值: false
+				NoEmbedEtcd: viper.GetBool(flagNoEmbedEtcd),
+				//Labels 默认值: map[]
+				Labels: viper.GetStringMapString(flagLabels),
+				//Annotations 默认值: map[]
+				Annotations: viper.GetStringMapString(flagAnnotations),
 			}
-
+			// showConfig(cfg, "0")
 			if flag := cmd.Flags().Lookup(flagLabels); flag != nil && flag.Changed {
 				cfg.Labels = labels
 			}
@@ -253,6 +292,7 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+			// 用上面准备的配置cfg, 初始化一个sensu-backend 实例;
 			sensuBackend, err := initialize(ctx, cfg)
 			if err != nil {
 				return err
@@ -267,15 +307,17 @@ func StartCommand(initialize InitializeFunc) *cobra.Command {
 				cancel()
 			}()
 
+			//debug =true, 开一个6060端口的debug服务器;
 			if viper.GetBool(flagDebug) {
 				go func() {
 					log.Println(http.ListenAndServe("127.0.0.1:6060", nil))
 				}()
 			}
+			// 运行sensu-backend 实例;
 			return sensuBackend.RunWithInitializer(initialize)
 		},
 	}
-
+	//设置默认配置
 	setupErr = handleConfig(cmd, true)
 
 	return cmd

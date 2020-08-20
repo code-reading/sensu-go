@@ -16,6 +16,9 @@ import (
 // around a particular topic type. Care should be taken not to send multiple
 // message types over a single topic, however, as we do not want to introduce
 // a dependency on reflection to determine the type of the received interface{}.
+// WizardBus 给每个topic 创建一个新的goroutine, 负责将消息发给每一个订阅者;
+// WizardTopic 可以传递任何类型, 可以协调生产者和消费者中具体的topic 类型;
+// 因为不想依赖反射来判断每个消息的类型，所以不能给一个topic 一次传送多个不同的消息类型的消息,
 type WizardBus struct {
 	running  atomic.Value
 	topicsMu sync.RWMutex

@@ -29,21 +29,21 @@ type ExtensionExecutorGetterFunc func(*corev2.Extension) (rpc.ExtensionExecutor,
 // handler configuration determines which Sensu filters and mutator
 // are used.
 type Pipelined struct {
-	assetGetter            asset.Getter
+	assetGetter            asset.Getter //assetGetter
 	stopping               chan struct{}
 	running                *atomic.Value
 	wg                     *sync.WaitGroup
 	errChan                chan error
 	eventChan              chan interface{}
 	subscription           messaging.Subscription
-	store                  store.Store
-	bus                    messaging.MessageBus
-	extensionExecutor      pipeline.ExtensionExecutorGetterFunc
+	store                  store.Store                          //etcdStore
+	bus                    messaging.MessageBus                 //WizardBus
+	extensionExecutor      pipeline.ExtensionExecutorGetterFunc //GRPCExtensionExecutor
 	executor               command.Executor
 	workerCount            int
 	storeTimeout           time.Duration
-	secretsProviderManager *secrets.ProviderManager
-	backendEntity          *corev2.Entity
+	secretsProviderManager *secrets.ProviderManager // SecretsProviderManager
+	backendEntity          *corev2.Entity           // backendEntity
 	LicenseGetter          licensing.Getter
 }
 
