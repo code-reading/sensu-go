@@ -21,10 +21,12 @@ var (
 const (
 	// DefaultAssetsRateLimit defines the rate limit for assets fetched per second.
 	// It equates to GitHub's user to server rate limit of 5000 requests per hour.
+	// 速率限制
 	DefaultAssetsRateLimit rate.Limit = 1.39
 
 	// DefaultAssetsBurstLimit defines the burst ceiling for a rate limited asset fetch.
 	// If 0, then the setting has no effect.
+	// 瞬时的最高速度限制
 	DefaultAssetsBurstLimit int = 100
 )
 
